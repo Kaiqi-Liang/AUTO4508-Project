@@ -1,0 +1,13 @@
+<launch>
+
+<node pkg="rosaria" name="RosAria" type="RosAria">
+	<param name="port" value="/dev/ttyS1" />
+</node>
+
+<node pkg="joy" name="joy_node" type="joy_node"/>
+
+<node pkg="teleop_twist_joy" name="teleop_node" type="teleop_node">
+  <remap from="cmd_vel" to="RosAria/cmd_vel"/>
+</node>
+
+</launch>
