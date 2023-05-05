@@ -10,4 +10,6 @@
   <remap from="cmd_vel" to="RosAria/cmd_vel"/>
 </node>
 
+<node pkg="master_pkg" name="master" type="master"/>
+
 </launch>
