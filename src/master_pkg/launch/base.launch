@@ -13,11 +13,11 @@
 	<remap from="joy" to="master/joy"/>
 </node>
 
-<include file="$(find sick_scan)/launch/sick_tim_7xx.launch"/>
-
 <node pkg="nmea_navsat_driver" name="nmea_serial_driver" type="nmea_serial_driver">
 	<param name="port" value="/dev/ttyACM0"/>
 	<param name="baud" value="9600"/>
 </node>
+
+<include file="$(find sick_scan)/launch/sick_tim_7xx.launch"/>
 
 </launch>
