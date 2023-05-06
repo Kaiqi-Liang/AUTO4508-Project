@@ -1,5 +1,7 @@
 <launch>
 
+<node pkg="master_pkg" name="master" type="master" output="screen"/>
+
 <node pkg="rosaria" name="RosAria" type="RosAria">
 	<param name="port" value="/dev/ttyS1" />
 </node>
@@ -8,8 +10,7 @@
 
 <node pkg="teleop_twist_joy" name="teleop_node" type="teleop_node">
   <remap from="cmd_vel" to="RosAria/cmd_vel"/>
+  <remap from="joy" to="master/joy"/>
 </node>
-
-<node pkg="master_pkg" name="master" type="master"/>
 
 </launch>
