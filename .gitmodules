@@ -1,3 +1,16 @@
 [submodule "src/rosaria"]
 	path = src/rosaria
 	url = https://github.com/amor-ros-pkg/rosaria.git
+[submodule "src/depthai-ros"]
+	path = src/depthai-ros
+	url = https://github.com/luxonis/depthai-ros.git
+	branch = noetic
+[submodule "src/msgpack11"]
+	path = src/msgpack11
+	url = https://github.com/SICKAG/msgpack11.git
+[submodule "src/sick_scan_xd"]
+	path = src/sick_scan_xd
+	url = https://github.com/SICKAG/sick_scan_xd.git
+[submodule "src/libsick_ldmrs"]
+	path = src/libsick_ldmrs
+	url = https://github.com/SICKAG/libsick_ldmrs.git

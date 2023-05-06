@@ -3,14 +3,21 @@
 <node pkg="master_pkg" name="master" type="master" output="screen"/>
 
 <node pkg="rosaria" name="RosAria" type="RosAria">
-	<param name="port" value="/dev/ttyS1" />
+	<param name="port" value="/dev/ttyS1"/>
 </node>
 
 <node pkg="joy" name="joy_node" type="joy_node"/>
 
 <node pkg="teleop_twist_joy" name="teleop_node" type="teleop_node">
-  <remap from="cmd_vel" to="RosAria/cmd_vel"/>
-  <remap from="joy" to="master/joy"/>
+	<remap from="cmd_vel" to="RosAria/cmd_vel"/>
+	<remap from="joy" to="master/joy"/>
+</node>
+
+<node pkg="sick_scan" name="sick_tim_7xx" type="sick_tim_7xx"/>
+
+<node pkg="nmea_navsat_driver" name="nmea_serial_driver" type="nmea_serial_driver">
+	<param name="port" value="/dev/ttyACM0"/>
+	<param name="baud" value="9600"/>
 </node>
 
 </launch>
