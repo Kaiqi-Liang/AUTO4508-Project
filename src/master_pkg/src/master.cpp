@@ -3,6 +3,7 @@
 #include "sensor_msgs/Joy.h"
 #include "sensor_msgs/LaserScan.h"
 #include "sensor_msgs/NavSatFix.h"
+#include "sensor_msgs/Image.h"
 
 bool manual = true;
 ros::Publisher joy_pub;
@@ -24,11 +25,15 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 		cmd_vel_msg.linear.x = 1;
 		cmd_vel_msg.linear.y = 0;
 		cmd_vel_msg.linear.z = 0;
-		cmd_vel_msg.angular.z = 0;
-		cmd_vel_msg.angular.y = 0;
 		cmd_vel_msg.angular.x = 0;
+		cmd_vel_msg.angular.y = 0;
+		cmd_vel_msg.angular.z = 0;
 		cmd_vel_pub.publish(cmd_vel_msg);
 	}
+}
+
+void camera_callback(const sensor_msgs::Image::ConstPtr& camera_image) {
+	// ROS_INFO("%d", camera_image->data[0]);
 }
 
 void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
@@ -41,6 +46,7 @@ int main(int argc, char** argv) {
 	ros::NodeHandle n;
 	ros::Subscriber joy_sub = n.subscribe("joy", 1000, joy_callback);
 	ros::Subscriber gps_sub = n.subscribe("fix", 1000, gps_callback);
+	ros::Subscriber camera_sub = n.subscribe("mobilenet_publisher/color/image", 1000, camera_callback);
 	ros::Subscriber lidar_sub =
 	   n.subscribe("sick_tim_7xx/scan", 1000, lidar_callback);
 	joy_pub = n.advertise<sensor_msgs::Joy>("master/joy", 1);

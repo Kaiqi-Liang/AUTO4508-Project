@@ -19,5 +19,8 @@
 </node>
 
 <include file="$(find sick_scan)/launch/sick_tim_7xx.launch"/>
+<include file="$(find depthai_examples)/launch/mobile_publisher.launch">
+	<param name="camera_model" value="OAK-D"/>
+</include>
 
 </launch>
