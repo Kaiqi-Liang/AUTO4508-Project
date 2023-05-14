@@ -1,13 +1,16 @@
-#include "geometry_msgs/Twist.h"
 #include "ros/ros.h"
 #include "sensor_msgs/Joy.h"
 #include "sensor_msgs/LaserScan.h"
 #include "sensor_msgs/NavSatFix.h"
 #include "sensor_msgs/Image.h"
+#include "geometry_msgs/Twist.h"
 
 bool manual = true;
+bool facing_obstacle = false;
 ros::Publisher joy_pub;
 ros::Publisher cmd_vel_pub;
+double latitude;
+double longitude;
 
 void joy_callback(const sensor_msgs::Joy::ConstPtr& joy_msg) {
 	if (joy_msg->buttons[1]) {
@@ -18,9 +21,34 @@ void joy_callback(const sensor_msgs::Joy::ConstPtr& joy_msg) {
 	if (manual) joy_pub.publish(joy_msg);
 }
 
+struct Cartesian {
+	double x;
+	double y;
+	double z;
+};
+
+Cartesian ellip2cart(double phi, double lambda) {
+	phi *= M_PI / 180;
+	lambda *= M_PI / 180;
+	double a = 6378137; // semi-major axis (WGS84) [m]
+	double f = 1 / 298.257223563; // earth flattening (WGS84)
+	double e = std::sqrt((std::pow(a, 2) - std::pow(a * (1 - f), 2)) / std::pow(a, 2)); // excentricity
+	double height = 5;
+	double normal_curature_radius = a / std::sqrt(1 - std::pow(e, 2) * std::pow(std::sin(phi), 2));
+	return {
+		(normal_curature_radius + height) * std::cos(phi) * std::cos(lambda),
+		(normal_curature_radius + height) * std::cos(phi) * std::sin(lambda),
+		(normal_curature_radius * (1 - std::pow(e, 2)) + height) * std::sin(phi),
+	};
+}
+
 void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
-	// ROS_INFO("%f %f", gps_fix_msg->latitude, gps_fix_msg->longitude);
-	if (not manual) {
+	Cartesian robot = ellip2cart(gps_fix_msg->latitude, gps_fix_msg->longitude);
+	Cartesian goal = ellip2cart(latitude, longitude);
+
+	double distance = std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2) + std::pow(robot.z - goal.z, 2));
+	ROS_INFO("%lf\n", distance);
+	if (not manual and not facing_obstacle) {
 		geometry_msgs::Twist cmd_vel_msg;
 		cmd_vel_msg.linear.x = 1;
 		cmd_vel_msg.linear.y = 0;
@@ -33,12 +61,11 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 }
 
 void camera_callback(const sensor_msgs::Image::ConstPtr& camera_image) {
-	// ROS_INFO("%d", camera_image->data[0]);
+	camera_image->data;
 }
 
 void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
-	// ROS_INFO("%f %f", lidar_scan_msg->intensities[0],
-	// lidar_scan_msg->ranges[0]);
+	facing_obstacle = lidar_scan_msg->ranges[405] < 1.5;
 }
 
 int main(int argc, char** argv) {
