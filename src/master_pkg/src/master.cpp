@@ -8,8 +8,8 @@ bool manual = true;
 bool facing_obstacle = false;
 ros::Publisher joy_pub;
 ros::Publisher cmd_vel_pub;
-double latitude;
-double longitude;
+double latitude = -31.98020163112797;
+double longitude = 115.8175287621561;
 
 void joy_callback(const sensor_msgs::Joy::ConstPtr& joy_msg) {
 	if (joy_msg->buttons[1]) {
@@ -46,12 +46,14 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	Cartesian goal = ellip2cart(latitude, longitude);
 
 	double distance = std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2) + std::pow(robot.z - goal.z, 2));
-	if (not manual and not facing_obstacle) {
+	double heading = std::atan2(robot.y - goal.y, robot.x - goal.x); // should this be goal - robot?
+	ROS_INFO("distance = %lf heading = %lf", distance, heading);
+	if (distance > 2 and heading > 2 and not manual and not facing_obstacle) {
 		geometry_msgs::Twist cmd_vel_msg;
 		cmd_vel_msg.linear.x = 1;
 		cmd_vel_msg.linear.y = 0;
 		cmd_vel_msg.linear.z = 0;
-		cmd_vel_msg.angular.x = 0;
+		cmd_vel_msg.angular.x = 1;
 		cmd_vel_msg.angular.y = 0;
 		cmd_vel_msg.angular.z = 0;
 		cmd_vel_pub.publish(cmd_vel_msg);
