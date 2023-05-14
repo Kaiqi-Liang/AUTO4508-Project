@@ -2,7 +2,6 @@
 #include "sensor_msgs/Joy.h"
 #include "sensor_msgs/LaserScan.h"
 #include "sensor_msgs/NavSatFix.h"
-#include "sensor_msgs/Image.h"
 #include "geometry_msgs/Twist.h"
 
 bool manual = true;
@@ -47,7 +46,6 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	Cartesian goal = ellip2cart(latitude, longitude);
 
 	double distance = std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2) + std::pow(robot.z - goal.z, 2));
-	ROS_INFO("%lf\n", distance);
 	if (not manual and not facing_obstacle) {
 		geometry_msgs::Twist cmd_vel_msg;
 		cmd_vel_msg.linear.x = 1;
@@ -60,10 +58,6 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	}
 }
 
-void camera_callback(const sensor_msgs::Image::ConstPtr& camera_image) {
-	camera_image->data;
-}
-
 void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 	facing_obstacle = lidar_scan_msg->ranges[405] < 1.5;
 }
@@ -73,7 +67,6 @@ int main(int argc, char** argv) {
 	ros::NodeHandle n;
 	ros::Subscriber joy_sub = n.subscribe("joy", 1000, joy_callback);
 	ros::Subscriber gps_sub = n.subscribe("fix", 1000, gps_callback);
-	ros::Subscriber camera_sub = n.subscribe("mobilenet_publisher/color/image", 1000, camera_callback);
 	ros::Subscriber lidar_sub =
 	   n.subscribe("sick_tim_7xx/scan", 1000, lidar_callback);
 	joy_pub = n.advertise<sensor_msgs::Joy>("master/joy", 1);

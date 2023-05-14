@@ -2,6 +2,8 @@
 
 <node pkg="master_pkg" name="master" type="master" output="screen"/>
 
+<node pkg="master_pkg" name="cv" type="cv.py"/>
+
 <node pkg="rosaria" name="RosAria" type="RosAria">
 	<param name="port" value="/dev/ttyS1"/>
 </node>
