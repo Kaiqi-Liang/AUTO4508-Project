@@ -20,7 +20,10 @@
 	<param name="baud" value="9600"/>
 </node>
 
+<node pkg="imu_filter_madgwick" name="imu_filter_node" type="imu_filter_node"/>
+
 <include file="$(find sick_scan)/launch/sick_tim_7xx.launch"/>
 <include file="$(find depthai_examples)/launch/mobile_publisher.launch"/>
+<include file="$(find phidgets_spatial)/launch/spatial.launch"/>
 
 </launch>

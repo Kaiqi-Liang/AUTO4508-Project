@@ -2,6 +2,8 @@
 #include "sensor_msgs/Joy.h"
 #include "sensor_msgs/LaserScan.h"
 #include "sensor_msgs/NavSatFix.h"
+#include "sensor_msgs/Imu.h"
+#include <tf/tf.h>
 #include "geometry_msgs/Twist.h"
 
 struct Cartesian {
@@ -46,16 +48,16 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	double angular_speed = 0;
 	Cartesian goal = ellip2cart(latitude, longitude);
 	Cartesian robot = ellip2cart(gps_fix_msg->latitude, gps_fix_msg->longitude);
-	distance = std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2) + std::pow(robot.z - goal.z, 2));
+	double distance = std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2) + std::pow(robot.z - goal.z, 2));
 	double heading2goal = std::atan2(goal.y - robot.y, goal.x - robot.x);
 	double angle = heading2goal - current_heading;
 	if (std::abs(angle) > 0.3) {
-		angular_speed = angle > 0 ? 0.1 : -0.1;
+		angular_speed = angle > 0 ? 0.3 : -0.3;
 	}
 	ROS_INFO("distance = %lf angle = %lf manual = %d facing_obstacle = %d", distance, angle, manual, facing_obstacle);
-	if (distance > 2 and not manual) {
+	if (distance > 2 and not manual and not facing_obstacle) {
 		geometry_msgs::Twist cmd_vel_msg;
-		cmd_vel_msg.linear.x = 1;
+		cmd_vel_msg.linear.x = 0.5;
 		cmd_vel_msg.linear.y = 0;
 		cmd_vel_msg.linear.z = 0;
 		cmd_vel_msg.angular.x = 0;
@@ -66,7 +68,15 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 }
 
 void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
-	facing_obstacle = lidar_scan_msg->ranges[405] < 1.5;
+	facing_obstacle = lidar_scan_msg->ranges[405] > 0;
+}
+
+void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
+	tf::Quaternion q(imu_msg->orientation.x, imu_msg->orientation.y, imu_msg->orientation.z, imu_msg->orientation.w);
+	tf::Matrix3x3 m(q);
+	double roll, pitch, yaw;
+	m.getRPY(roll, pitch, yaw);
+	ROS_INFO("%lf %lf %lf", roll, pitch, yaw);
 }
 
 int main(int argc, char** argv) {
@@ -74,6 +84,7 @@ int main(int argc, char** argv) {
 	ros::NodeHandle n;
 	ros::Subscriber joy_sub = n.subscribe("joy", 1000, joy_callback);
 	ros::Subscriber gps_sub = n.subscribe("fix", 1000, gps_callback);
+	ros::Subscriber imu_sub = n.subscribe("imu/data", 1000, imu_callback);
 	ros::Subscriber lidar_sub =
 	   n.subscribe("sick_tim_7xx/scan", 1000, lidar_callback);
 	joy_pub = n.advertise<sensor_msgs::Joy>("master/joy", 1);
