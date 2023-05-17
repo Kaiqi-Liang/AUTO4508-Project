@@ -4,12 +4,19 @@
 #include "sensor_msgs/NavSatFix.h"
 #include "geometry_msgs/Twist.h"
 
+struct Cartesian {
+	double x;
+	double y;
+	double z;
+};
+
 bool manual = true;
 bool facing_obstacle = false;
 ros::Publisher joy_pub;
 ros::Publisher cmd_vel_pub;
 double latitude = -31.98020163112797;
 double longitude = 115.8175287621561;
+double current_heading = 0;
 
 void joy_callback(const sensor_msgs::Joy::ConstPtr& joy_msg) {
 	if (joy_msg->buttons[1]) {
@@ -19,12 +26,6 @@ void joy_callback(const sensor_msgs::Joy::ConstPtr& joy_msg) {
 	}
 	if (manual) joy_pub.publish(joy_msg);
 }
-
-struct Cartesian {
-	double x;
-	double y;
-	double z;
-};
 
 Cartesian ellip2cart(double phi, double lambda) {
 	phi *= M_PI / 180;
@@ -42,20 +43,24 @@ Cartesian ellip2cart(double phi, double lambda) {
 }
 
 void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
-	Cartesian robot = ellip2cart(gps_fix_msg->latitude, gps_fix_msg->longitude);
+	double angular_speed = 0;
 	Cartesian goal = ellip2cart(latitude, longitude);
-
-	double distance = std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2) + std::pow(robot.z - goal.z, 2));
-	double heading = std::atan2(robot.y - goal.y, robot.x - goal.x); // should this be goal - robot?
-	ROS_INFO("distance = %lf heading = %lf", distance, heading);
-	if (distance > 2 and heading > 2 and not manual and not facing_obstacle) {
+	Cartesian robot = ellip2cart(gps_fix_msg->latitude, gps_fix_msg->longitude);
+	distance = std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2) + std::pow(robot.z - goal.z, 2));
+	double heading2goal = std::atan2(goal.y - robot.y, goal.x - robot.x);
+	double angle = heading2goal - current_heading;
+	if (std::abs(angle) > 0.3) {
+		angular_speed = angle > 0 ? 0.1 : -0.1;
+	}
+	ROS_INFO("distance = %lf angle = %lf manual = %d facing_obstacle = %d", distance, angle, manual, facing_obstacle);
+	if (distance > 2 and not manual) {
 		geometry_msgs::Twist cmd_vel_msg;
 		cmd_vel_msg.linear.x = 1;
 		cmd_vel_msg.linear.y = 0;
 		cmd_vel_msg.linear.z = 0;
-		cmd_vel_msg.angular.x = 1;
+		cmd_vel_msg.angular.x = 0;
 		cmd_vel_msg.angular.y = 0;
-		cmd_vel_msg.angular.z = 0;
+		cmd_vel_msg.angular.z = angular_speed;
 		cmd_vel_pub.publish(cmd_vel_msg);
 	}
 }
