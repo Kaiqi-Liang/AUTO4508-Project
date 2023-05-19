@@ -16,6 +16,9 @@ def callback(data):
         x, y, w, h = cv2.boundingRect(contour)
         if w > 20 and h > 30:
             bounding_boxes.append(((x, y), (x + w, y + h)))
+    # if len(bounding_box) > 0:
+    #     pub = rospy.Publisher('found_bucket', bool, queue_size=10)
+    #     pub.publish(True)
     for bounding_box in bounding_boxes:
         cv2.rectangle(img, *bounding_box, (255, 0, 0), 1)
     data.data = img.flatten().tobytes()
