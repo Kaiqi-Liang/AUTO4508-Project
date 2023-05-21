@@ -1,5 +1,6 @@
 #include "geometry_msgs/Twist.h"
 #include "ros/ros.h"
+#include "std_msgs/Bool.h"
 #include "sensor_msgs/Imu.h"
 #include "sensor_msgs/Joy.h"
 #include "sensor_msgs/LaserScan.h"
@@ -10,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <unordered_map>
 
 struct Cartesian {
 	double x;
@@ -25,21 +27,33 @@ struct Coordinate {
 	, longitude{longitude} {}
 };
 
+enum State {
+	DRIVING, // Driving towards the next waypoint
+	ROTATING, // Rotating away for the obstacle after waiting for them to move
+	FOLLOWING, // Following the obstacle keeping it on the right
+	DETECTING, // Looking for the bucket after reaching a waypoint
+	TURNING, // Turning towards the bucket after detecting it
+};
+State state = DRIVING;
+
+constexpr std::size_t LIDAR_FRONT = 405;
+constexpr std::size_t LIDAR_FRONT_RIGHT = 395;
+constexpr std::size_t LIDAR_FRONT_LEFT = 415;
 bool manual = true;
 bool facing_obstacle = false;
-bool reached_waypoint = false;
 bool found_bucket = false;
 std::size_t waypoint_counter = 0;
 std::size_t obstacle_timer = 0;
 double current_heading = 0;
 ros::Publisher joy_pub;
 ros::Publisher cmd_vel_pub;
+ros::Publisher cv_pub;
 std::vector<Coordinate> coordinates;
 
 void joy_callback(const sensor_msgs::Joy::ConstPtr& joy_msg) {
 	if (joy_msg->buttons[1]) {
 		manual = true;
-	} else if (joy_msg->buttons[2]) { // Enable automated mode
+	} else if (joy_msg->buttons[2]) { // automated mode
 		manual = false;
 	}
 	if (manual) joy_pub.publish(joy_msg);
@@ -63,63 +77,133 @@ Cartesian ellip2cart(double phi, double lambda) {
 }
 
 void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
-	if (manual or reached_waypoint or std::isnan(gps_fix_msg->latitude) or std::isnan(gps_fix_msg->longitude)) return;
+	if (manual or std::isnan(gps_fix_msg->latitude) or std::isnan(gps_fix_msg->longitude) or state != DRIVING) return;
 	double angular_speed = 0;
+	// ROS_INFO("counter=%ld, latitude=%lf, longitude=%lf",waypoint_counter, coordinates[waypoint_counter].latitude, coordinates[waypoint_counter].longitude);
 	Cartesian goal = ellip2cart(coordinates[waypoint_counter].latitude,
 	                            coordinates[waypoint_counter].longitude);
 	Cartesian robot = ellip2cart(gps_fix_msg->latitude, gps_fix_msg->longitude);
+	ROS_INFO("x=%lf, y=%lf, z=%lf", goal.x, goal.y, goal.z);
+	ROS_INFO("x=%lf, y=%lf, z=%lf", robot.x, robot.y, robot.z);
 	double distance =
 	   std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2)
 	             + std::pow(robot.z - goal.z, 2));
-	double heading2goal = std::atan2(goal.y - robot.y, goal.x - robot.x);
+	double heading2goal = std::atan2(goal.x - robot.x, goal.y - robot.y);
+	ROS_INFO("distance=%lf heading2goal=%lf", distance, heading2goal);
 	double angle = heading2goal - current_heading + M_PI / 2;
-	if (std::abs(angle) > 0.3) { angular_speed = angle > 0 ? 0.3 : -0.3; }
-	ROS_INFO("distance = %lf angle = %lf facing_obstacle = %d",
-	         distance,
-	         angle,
-	         facing_obstacle);
+	if (angle > M_PI) angle -= 2 * M_PI;
+	if (std::abs(angle) > 0.1) angular_speed = angle > 0 ? 0.3 : -0.3;
+	ROS_INFO("angle=%lf heading=%lf facing_obstacle=%d",angle,current_heading,facing_obstacle);
 
 	geometry_msgs::Twist cmd_vel_msg;
 	if (distance > 1 and not facing_obstacle) {
 		cmd_vel_msg.linear.x = 0.5;
-		cmd_vel_msg.linear.y = 0;
-		cmd_vel_msg.linear.z = 0;
-		cmd_vel_msg.angular.x = 0;
-		cmd_vel_msg.angular.y = 0;
 		cmd_vel_msg.angular.z = angular_speed;
 		cmd_vel_pub.publish(cmd_vel_msg);
 	} else if (distance > 1) {
 		// start a timer
 		if (facing_obstacle) {
 			++obstacle_timer;
-			if (obstacle_timer > 10) { // distbug
+			if (obstacle_timer > 20) { // distbug
+				state = ROTATING;
 				obstacle_timer = 0;
 			}
 		} else {
 			obstacle_timer = 0;
 		}
 	} else {
-		reached_waypoint = true;
+		state = DETECTING;
 		++waypoint_counter;
 	}
 }
 
 void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
-	facing_obstacle = lidar_scan_msg->ranges[405] > 0
-	                  and lidar_scan_msg->ranges[405] < 2;
-	if (reached_waypoint) {
-		double min_distance = DBL_MAX;
-		double bucket_lidar_index;
-		for (std::size_t i = 0; i < 812; ++i) {
-			if (i < 385 and i > 425) {
-				if (min_distance > lidar_scan_msg->ranges[i]) {
-					min_distance = lidar_scan_msg->ranges[i];
-					bucket_lidar_index = i;
+	// lidar_scan_msg->ranges: 0 -> 811: right -> left
+	if (manual) return;
+	facing_obstacle = false;
+	for (std::size_t i = LIDAR_FRONT_RIGHT; i <= LIDAR_FRONT_LEFT; ++i) {
+		if (lidar_scan_msg->ranges[i] > 0.1 and lidar_scan_msg->ranges[i] < 1) {
+			facing_obstacle = true;
+		}
+	}
+	geometry_msgs::Twist cmd_vel_msg;
+	std::size_t min_index;
+	switch (state) {
+		case DETECTING: {
+			std::unordered_map<std::size_t, double> objects{};
+			for (std::size_t i = 0; i <= LIDAR_FRONT_RIGHT; ++i) {
+				if (lidar_scan_msg->ranges[i] > 0.1) {
+					double average = 0;
+					std::size_t j = i;
+					for (; j < LIDAR_FRONT_RIGHT; ++j) {
+						average += lidar_scan_msg->ranges[j];
+						if (lidar_scan_msg->ranges[j] - lidar_scan_msg->ranges[j + 1] > 0.5) break;
+					}
+					if (j - i >= 10) {
+						objects[(j + i) / 2] = average / (j - i + 1);
+					}
+					i = j;
 				}
 			}
+			for (std::size_t i = LIDAR_FRONT_LEFT; i < lidar_scan_msg->ranges.size() - 1; ++i) {
+				if (lidar_scan_msg->ranges[i] > 0.1) {
+					double average = 0;
+					std::size_t j = i;
+					for (; j < lidar_scan_msg->ranges.size(); ++j) {
+						average += lidar_scan_msg->ranges[j];
+						if (lidar_scan_msg->ranges[j] - lidar_scan_msg->ranges[j + 1] > 0.5) break;
+					}
+					if (j - i >= 10) {
+						ROS_INFO("average = %lf i = %ld j = %ld", average, i, j);
+						objects[(j + i) / 2] = average / (j - i + 1);
+					}
+					i = j;
+				}
+			}
+			for (auto && [index, distance]: objects) {
+				ROS_INFO("index=%ld, distance=%lf", index, distance);
+			}
+			auto const iter = std::min_element(objects.cbegin(), objects.cend(), [](std::pair<std::size_t, double> const& lhs, std::pair<std::size_t, double> const& rhs){
+				return lhs.second < rhs.second;
+			});
+			min_index = std::distance(objects.cbegin(), iter);
+			ROS_INFO("min_distance=%lf, index=%ld", iter->second, min_index);
 		}
-		// finish with this waypoint
-		reached_waypoint = false;
+		case TURNING: {
+			// turn to the way point
+			if (min_index < LIDAR_FRONT) {
+				ROS_INFO("Bucket is on the left of the cone");
+				cmd_vel_msg.angular.z = 0.3;
+			} else {
+				ROS_INFO("Bucket is on the right of the cone");
+				cmd_vel_msg.angular.z = -0.3;
+			}
+			cmd_vel_pub.publish(cmd_vel_msg);
+			// finish with this waypoint
+			if (facing_obstacle) {
+				ROS_INFO("Turned to the bucket");
+				std_msgs::Bool bucket;
+				bucket.data = true;
+				cv_pub.publish(bucket);
+				state = DRIVING;
+			}
+		}
+		case ROTATING: {
+			cmd_vel_msg.angular.z = 0.3; // turn left
+			cmd_vel_pub.publish(cmd_vel_msg);
+			if (lidar_scan_msg->ranges[500] > 2) { // front right is open
+				ROS_INFO("Start wall following\n");
+				state = FOLLOWING;
+			}
+		}
+		case FOLLOWING: {
+			cmd_vel_msg.linear.x = 0.3; // drive straight
+			cmd_vel_pub.publish(cmd_vel_msg);
+			if (lidar_scan_msg->ranges[600] > 2) { // right is open
+				ROS_INFO("Away from the obstacle\n");
+				state = DRIVING;
+			}
+		}
 	}
 }
 
@@ -162,12 +246,12 @@ int main(int argc, char** argv) {
 	ros::Subscriber joy_sub = n.subscribe("joy", 1000, joy_callback);
 	ros::Subscriber gps_sub = n.subscribe("fix", 1000, gps_callback);
 	ros::Subscriber imu_sub = n.subscribe("imu/data", 1000, imu_callback);
-	// ros::Subscriber cv_sub = n.subscribe("found_bucket", 1000, cv_callback);
 	ros::Subscriber lidar_sub =
 	   n.subscribe("sick_tim_7xx/scan", 1000, lidar_callback);
 
 	joy_pub = n.advertise<sensor_msgs::Joy>("master/joy", 1);
 	cmd_vel_pub = n.advertise<geometry_msgs::Twist>("RosAria/cmd_vel", 1);
+	cv_pub = n.advertise<std_msgs::Bool>("bucket", 1);
 
 	ros::spin();
 	return 0;

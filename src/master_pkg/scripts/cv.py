@@ -4,7 +4,11 @@ import cv2
 import rospy
 from sensor_msgs.msg import Image
 
-def callback(data):
+bucket = False
+
+def image_callback(data):
+    if not bucket:
+        return
     img = np.reshape(np.frombuffer(data.data, dtype=np.uint8), (300, 300, 3))
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     lower_red = np.array([160, 100, 50])
@@ -19,13 +23,20 @@ def callback(data):
     # if len(bounding_box) > 0:
     #     pub = rospy.Publisher('found_bucket', bool, queue_size=10)
     #     pub.publish(True)
+    # print(len(bounding_box) > 0)
     for bounding_box in bounding_boxes:
         cv2.rectangle(img, *bounding_box, (255, 0, 0), 1)
     data.data = img.flatten().tobytes()
     pub = rospy.Publisher('labeled_image', Image, queue_size=10)
     pub.publish(data)
 
+# def bucket_callback(bucket):
+#     if bucket:
+#         global bucket
+#         bucket = True
+
 if __name__ == '__main__':
     rospy.init_node('cv', anonymous=True)
-    rospy.Subscriber('mobilenet_publisher/color/image', Image, callback)
+    rospy.Subscriber('mobilenet_publisher/color/image', Image, image_callback)
+    # rospy.Subscriber('bucket', bool, bucket_callback)
     rospy.spin()
