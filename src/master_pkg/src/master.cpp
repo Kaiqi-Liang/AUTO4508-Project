@@ -1,17 +1,17 @@
 #include "geometry_msgs/Twist.h"
 #include "ros/ros.h"
-#include "std_msgs/Bool.h"
 #include "sensor_msgs/Imu.h"
 #include "sensor_msgs/Joy.h"
 #include "sensor_msgs/LaserScan.h"
 #include "sensor_msgs/NavSatFix.h"
+#include "std_msgs/Bool.h"
 #include <tf/tf.h>
+#include <unordered_map>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <cmath>
-#include <unordered_map>
 
 struct Cartesian {
 	double x;
@@ -77,9 +77,13 @@ Cartesian ellip2cart(double phi, double lambda) {
 }
 
 void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
-	if (manual or std::isnan(gps_fix_msg->latitude) or std::isnan(gps_fix_msg->longitude) or state != DRIVING) return;
+	if (manual or std::isnan(gps_fix_msg->latitude)
+	    or std::isnan(gps_fix_msg->longitude) or state != DRIVING)
+		return;
 	double angular_speed = 0;
-	// ROS_INFO("counter=%ld, latitude=%lf, longitude=%lf",waypoint_counter, coordinates[waypoint_counter].latitude, coordinates[waypoint_counter].longitude);
+	// ROS_INFO("counter=%ld, latitude=%lf, longitude=%lf",waypoint_counter,
+	// coordinates[waypoint_counter].latitude,
+	// coordinates[waypoint_counter].longitude);
 	Cartesian goal = ellip2cart(coordinates[waypoint_counter].latitude,
 	                            coordinates[waypoint_counter].longitude);
 	Cartesian robot = ellip2cart(gps_fix_msg->latitude, gps_fix_msg->longitude);
@@ -93,7 +97,10 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	double angle = heading2goal - current_heading + M_PI / 2;
 	if (angle > M_PI) angle -= 2 * M_PI;
 	if (std::abs(angle) > 0.1) angular_speed = angle > 0 ? 0.3 : -0.3;
-	ROS_INFO("angle=%lf heading=%lf facing_obstacle=%d",angle,current_heading,facing_obstacle);
+	ROS_INFO("angle=%lf heading=%lf facing_obstacle=%d",
+	         angle,
+	         current_heading,
+	         facing_obstacle);
 
 	geometry_msgs::Twist cmd_vel_msg;
 	if (distance > 1 and not facing_obstacle) {
@@ -117,8 +124,10 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	}
 }
 
+/**
+ * @param lidar_scan_msg ranges [m]: 0 -> 811, right -> left
+ */
 void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
-	// lidar_scan_msg->ranges: 0 -> 811: right -> left
 	if (manual) return;
 	facing_obstacle = false;
 	for (std::size_t i = LIDAR_FRONT_RIGHT; i <= LIDAR_FRONT_LEFT; ++i) {
@@ -129,88 +138,88 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 	geometry_msgs::Twist cmd_vel_msg;
 	std::size_t min_index;
 	switch (state) {
-		case DETECTING: {
-			std::unordered_map<std::size_t, double> objects{};
-			for (std::size_t i = 0; i <= LIDAR_FRONT_RIGHT; ++i) {
-				if (lidar_scan_msg->ranges[i] > 0.1) {
-					double average = 0;
-					std::size_t j = i;
-					for (; j < LIDAR_FRONT_RIGHT; ++j) {
-						average += lidar_scan_msg->ranges[j];
-						if (lidar_scan_msg->ranges[j] - lidar_scan_msg->ranges[j + 1] > 0.5) break;
-					}
-					if (j - i >= 10) {
-						objects[(j + i) / 2] = average / (j - i + 1);
-					}
-					i = j;
+	case DETECTING: {
+		std::unordered_map<std::size_t, double> objects{};
+		for (std::size_t i = 0; i < lidar_scan_msg->ranges.size(); ++i) {
+			if (lidar_scan_msg->ranges[i] > 0.1) {
+				double average = 0;
+				std::size_t j = i;
+				for (; j < lidar_scan_msg->ranges.size(); ++j) {
+					average += lidar_scan_msg->ranges[j];
+					if (lidar_scan_msg->ranges[j] - lidar_scan_msg->ranges[j + 1] > 0.5)
+						break;
 				}
-			}
-			for (std::size_t i = LIDAR_FRONT_LEFT; i < lidar_scan_msg->ranges.size() - 1; ++i) {
-				if (lidar_scan_msg->ranges[i] > 0.1) {
-					double average = 0;
-					std::size_t j = i;
-					for (; j < lidar_scan_msg->ranges.size(); ++j) {
-						average += lidar_scan_msg->ranges[j];
-						if (lidar_scan_msg->ranges[j] - lidar_scan_msg->ranges[j + 1] > 0.5) break;
-					}
-					if (j - i >= 10) {
-						ROS_INFO("average = %lf i = %ld j = %ld", average, i, j);
-						objects[(j + i) / 2] = average / (j - i + 1);
-					}
-					i = j;
+				if (j - i >= 10) {
+					objects[j > LIDAR_FRONT and i < LIDAR_FRONT ? LIDAR_FRONT
+					                                            : (j + i) / 2] =
+					   average / (j - i + 1);
 				}
-			}
-			for (auto && [index, distance]: objects) {
-				ROS_INFO("index=%ld, distance=%lf", index, distance);
-			}
-			auto const iter = std::min_element(objects.cbegin(), objects.cend(), [](std::pair<std::size_t, double> const& lhs, std::pair<std::size_t, double> const& rhs){
-				return lhs.second < rhs.second;
-			});
-			min_index = std::distance(objects.cbegin(), iter);
-			ROS_INFO("min_distance=%lf, index=%ld", iter->second, min_index);
-		}
-		case TURNING: {
-			// turn to the way point
-			if (min_index < LIDAR_FRONT) {
-				ROS_INFO("Bucket is on the left of the cone");
-				cmd_vel_msg.angular.z = 0.3;
-			} else {
-				ROS_INFO("Bucket is on the right of the cone");
-				cmd_vel_msg.angular.z = -0.3;
-			}
-			cmd_vel_pub.publish(cmd_vel_msg);
-			// finish with this waypoint
-			if (facing_obstacle) {
-				ROS_INFO("Turned to the bucket");
-				std_msgs::Bool bucket;
-				bucket.data = true;
-				cv_pub.publish(bucket);
-				state = DRIVING;
+				i = j;
 			}
 		}
-		case ROTATING: {
-			cmd_vel_msg.angular.z = 0.3; // turn left
-			cmd_vel_pub.publish(cmd_vel_msg);
-			if (lidar_scan_msg->ranges[500] > 2) { // front right is open
-				ROS_INFO("Start wall following\n");
-				state = FOLLOWING;
-			}
+		for (auto&& [index, distance] : objects) {
+			ROS_INFO("index=%ld, distance=%lf", index, distance);
 		}
-		case FOLLOWING: {
-			cmd_vel_msg.linear.x = 0.3; // drive straight
-			cmd_vel_pub.publish(cmd_vel_msg);
-			if (lidar_scan_msg->ranges[600] > 2) { // right is open
-				ROS_INFO("Away from the obstacle\n");
-				state = DRIVING;
-			}
+		auto const iter =
+		   std::min_element(objects.cbegin(),
+		                    objects.cend(),
+		                    [](std::pair<std::size_t, double> const& lhs,
+		                       std::pair<std::size_t, double> const& rhs) {
+			                    return lhs.second < rhs.second;
+		                    });
+		min_index = std::distance(objects.cbegin(), iter);
+		double distance =
+		   std::sqrt(std::pow(objects[LIDAR_FRONT], 2) + std::pow(iter->second, 2)
+		             - 2 * objects[LIDAR_FRONT] * iter->second
+		                  * std::cos((LIDAR_FRONT - min_index) * angle_increment));
+		ROS_INFO("index=%ld, object distance=%lf, cone distance=%lf, "
+		         "distance=%lf",
+		         min_index,
+		         iter->second,
+		         objects[LIDAR_FRONT],
+		         distance);
+	}
+	case TURNING: {
+		// turn to the way point
+		if (min_index < LIDAR_FRONT) {
+			ROS_INFO("Bucket is on the right of the cone");
+			cmd_vel_msg.angular.z = -0.3;
+		} else {
+			ROS_INFO("Bucket is on the left of the cone");
+			cmd_vel_msg.angular.z = 0.3;
 		}
+		cmd_vel_pub.publish(cmd_vel_msg);
+		// finish with this waypoint
+		if (facing_obstacle) {
+			ROS_INFO("Turned to the bucket");
+			std_msgs::Bool bucket;
+			bucket.data = true;
+			cv_pub.publish(bucket);
+			state = DRIVING;
+		}
+	}
+	case ROTATING: {
+		cmd_vel_msg.angular.z = 0.3; // turn left
+		cmd_vel_pub.publish(cmd_vel_msg);
+		if (lidar_scan_msg->ranges[500] > 2) { // front right is open
+			ROS_INFO("Start wall following\n");
+			state = FOLLOWING;
+		}
+	}
+	case FOLLOWING: {
+		cmd_vel_msg.linear.x = 0.3; // drive straight
+		cmd_vel_pub.publish(cmd_vel_msg);
+		if (lidar_scan_msg->ranges[600] > 2) { // right is open
+			ROS_INFO("Away from the obstacle\n");
+			state = DRIVING;
+		}
+	}
 	}
 }
 
-// void cv_callback(auto const& cv_msg) {
-// 	if (reached_waypoint) found_bucket = true;
-// }
-
+/**
+ * @brief yaw: E: 0, N: +, S: -
+ */
 void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
 	tf::Quaternion q(imu_msg->orientation.x,
 	                 imu_msg->orientation.y,
@@ -220,15 +229,12 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
 	double roll, pitch, yaw;
 	m.getRPY(roll, pitch, yaw);
 	current_heading = yaw;
-	// ROS_INFO("%lf %lf %lf", roll, pitch, yaw);
 }
 
 int main(int argc, char** argv) {
-	std::ifstream coordinate("../AUTO4508-Project/src/master_pkg/src/coordinate.csv");
+	std::ifstream coordinate("../catkin_ws/src/master_pkg/src/coordinate.csv");
 	std::string line;
-	if (not coordinate.is_open()) {
-		return 1;
-	}
+	if (not coordinate.is_open()) { return 1; }
 	while (std::getline(coordinate, line)) {
 		std::stringstream ss{line};
 		std::string token;
