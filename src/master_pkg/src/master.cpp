@@ -3,9 +3,12 @@
 #include "sensor_msgs/LaserScan.h"
 #include "sensor_msgs/NavSatFix.h"
 #include "sensor_msgs/Imu.h"
-#include <tf/tf.h>
-#include <vector>
 #include "geometry_msgs/Twist.h"
+#include <tf/tf.h>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
 
 struct Cartesian {
 	double x;
@@ -13,18 +16,24 @@ struct Cartesian {
 	double z;
 };
 
+struct Coordinate {
+	double latitude;
+	double longitude;
+	Coordinate(double latitude, double longitude)
+	: latitude{latitude}
+	, longitude{longitude} {}
+};
+
 bool manual = true;
 bool facing_obstacle = false;
 bool reached_waypoint = false;
-std::size_t waypoint_counter = 0;
 bool found_bucket = false;
+std::size_t waypoint_counter = 0;
+std::size_t obstacle_timer = 0;
+double current_heading = 0;
 ros::Publisher joy_pub;
 ros::Publisher cmd_vel_pub;
-std::vector<double> latitudes = {};
-std::vector<double> longitudes = {};
-
-// sensor_msgs::LaserScan::ConstPtr lidar_scan_msg;
-double current_heading = 0;
+std::vector<Coordinate> coordinates;
 
 void joy_callback(const sensor_msgs::Joy::ConstPtr& joy_msg) {
 	if (joy_msg->buttons[1]) {
@@ -51,9 +60,9 @@ Cartesian ellip2cart(double phi, double lambda) {
 }
 
 void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
-	if (manual) return;
+	if (manual or reached_waypoint) return;
 	double angular_speed = 0;
-	Cartesian goal = ellip2cart(latitudes[waypoint_counter], longitudes[waypoint_counter]);
+	Cartesian goal = ellip2cart(coordinates[waypoint_counter].latitude, coordinates[waypoint_counter].longitude);
 	Cartesian robot = ellip2cart(gps_fix_msg->latitude, gps_fix_msg->longitude);
 	double distance = std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2) + std::pow(robot.z - goal.z, 2));
 	double heading2goal = std::atan2(goal.y - robot.y, goal.x - robot.x);
@@ -63,7 +72,7 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	}
 	geometry_msgs::Twist cmd_vel_msg;
 	ROS_INFO("distance = %lf angle = %lf facing_obstacle = %d", distance, angle, facing_obstacle);
-	if (not facing_obstacle) {
+	if (distance > 1 and not facing_obstacle) {
 		cmd_vel_msg.linear.x = 0.5;
 		cmd_vel_msg.linear.y = 0;
 		cmd_vel_msg.linear.z = 0;
@@ -72,85 +81,37 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 		cmd_vel_msg.angular.z = angular_speed;
 		cmd_vel_pub.publish(cmd_vel_msg);
 	} else if (distance > 1) {
-		// cmdvel_timeout = ros::Duration(5.0);
+		// start a timer
 		if (facing_obstacle) {
-			// distbug
+			++obstacle_timer;
+			if (obstacle_timer > 10) { // distbug
+				obstacle_timer = 0;
+			}
+		} else {
+			obstacle_timer = 0;
 		}
+	} else {
+		reached_waypoint = true;
+		++waypoint_counter;
 	}
-
-	// if (distance < 1) {
-
-	// 	double heading2bucket;
-	// 	double heading2waypoint_cone;
-	// 	double distance_waypoint;
-	// 	double distance_bucket;
-
-	// 	int bucketIdx_lidar = 10000;
-
-	// 	// save original heading to waypoint cone
-	// 	if (not reached_waypoint)
-	// 	{ 
-	// 		heading2waypoint_cone = current_heading;
-	// 	 	reached_waypoint = true;		
-	// 		waypoint_counter += 1;	// increase waypoint count
-	// 	}
-	// 	// call lidar values
-
-	// 	while (bucketIdx_lidar == 10000)
-	// 	{
-	// 		//find lidar value smaller than 1.5 and not in the front -> bucket
-	// 		bucketIdx_lidar = 500; // replace with find(lidar_scan_msg->ranges<1.5)  
-
-	// 		// if there is a positive value (not in cone range) this is the bucket
-	// 		if (bucketIdx_lidar != 10000 and std::abs(bucketIdx_lidar-405)>10) 
-	// 		{
-	// 			distance_bucket = lidar_scan_msg->ranges[bucketIdx_lidar]; // save distance to bucket
-	// 			heading2bucket = current_heading;  // save heading to bucket
-	// 		}
-			
-	// 		cmd_vel_msg.angular.z = 0.5;
-	// 		cmd_vel_pub.publish(cmd_vel_msg);			
-	// 	}
-
-	// 	cmd_vel_msg.angular.z = 0;
-	// 	cmd_vel_pub.publish(cmd_vel_msg);
-
-	// 	// turn to bucket
-	// 	if (std::abs(current_heading-heading2bucket) > 0.3) {
-	// 		angular_speed = angle > 0 ? 0.3 : -0.3;
-	// 		cmd_vel_msg.angular.z = angular_speed;
-	// 		cmd_vel_pub.publish(cmd_vel_msg);	
-	// 	}
-
-	// 	// take a photo of bucket
-
-	// 	// calculate distance between bucket and cone
-	// 	double angle_coneBucket = std::abs(heading2bucket-heading2waypoint_cone);
-	// 	double distance_coneBucket = std::sqrt(std::pow(distance_waypoint,2)+std::pow(distance_bucket,2)-2*distance_waypoint*distance_bucket*std::cos(angle_coneBucket));
-	// 	std::cout<<"distance between waypoint "<<waypoint_counter<<" and bucket is "<<distance_coneBucket<<" m. /n";
-
-	// 	// turn back to waypoint cone
-	// 	if (std::abs(current_heading-heading2waypoint_cone) > 0.3) {
-	// 		angular_speed = angle > 0 ? 0.3 : -0.3;
-	// 		cmd_vel_msg.angular.z = angular_speed;
-	// 		cmd_vel_pub.publish(cmd_vel_msg);	
-	// 	}
-
-	// 	if (heading2bucket-heading2waypoint_cone < 0 and distance_coneBucket < 1)
-	// 	{
-	// 		// obstacle = bucket
-	// 	}
-	// 	else
-	// 	{
-	// 		// obstacle = waypoint cone
-	// 	}
-
-	// 	// use distbug
-	// }
 }
 
 void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
-	facing_obstacle = lidar_scan_msg->ranges[405] > 0;
+	facing_obstacle = lidar_scan_msg->ranges[405] > 0 and lidar_scan_msg->ranges[405] < 2;
+	if (reached_waypoint) {
+		double min_distance = DBL_MAX;
+		double bucket_lidar_index;
+		for (std::size_t i = 0; i < 812; ++i) {
+			if (i < 385 and i > 425) {
+				if (min_distance > lidar_scan_msg->ranges[i]) {
+					min_distance = lidar_scan_msg->ranges[i];
+					bucket_lidar_index = i;
+				}
+			}
+		}
+		// finish with this waypoint
+		reached_waypoint = false;
+	}
 }
 
 // void cv_callback(auto const& cv_msg) {
@@ -163,11 +124,23 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
 	double roll, pitch, yaw;
 	m.getRPY(roll, pitch, yaw);
 	current_heading = yaw;
-	ROS_INFO("%lf %lf %lf", roll, pitch, yaw);
+	// ROS_INFO("%lf %lf %lf", roll, pitch, yaw);
 }
 
 int main(int argc, char** argv) {
-	std::ifstream waypoints("coordinate.csv");
+	std::ifstream coordinate("coordinate.csv");
+	std::vector<Coordinate> coordinates;
+	std::string line;
+	while (std::getline(coordinate, line)) {
+		std::stringstream ss{line};
+		std::string token;
+		std::getline(ss, token, ',');
+		double latitude = std::stod(token);
+		double longitude;
+		ss >> longitude;
+		coordinates.emplace_back(latitude, longitude);
+	}
+	ROS_INFO("%lf %lf", coordinates[waypoint_counter].latitude, coordinates[waypoint_counter].longitude);
 	ros::init(argc, argv, "master");
 	ros::NodeHandle n;
 	ros::Subscriber joy_sub = n.subscribe("joy", 1000, joy_callback);
