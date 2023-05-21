@@ -98,6 +98,7 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	} else {
 		state = DETECTING;
 		++waypoint_counter;
+		waypoint_counter %= coordinates.size();
 	}
 }
 
