@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <cmath>
 
 struct Cartesian {
 	double x;
@@ -62,7 +63,7 @@ Cartesian ellip2cart(double phi, double lambda) {
 }
 
 void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
-	if (manual or reached_waypoint) return;
+	if (manual or reached_waypoint or std::isnan(gps_fix_msg->latitude) or std::isnan(gps_fix_msg->longitude)) return;
 	double angular_speed = 0;
 	Cartesian goal = ellip2cart(coordinates[waypoint_counter].latitude,
 	                            coordinates[waypoint_counter].longitude);
@@ -140,7 +141,6 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
 
 int main(int argc, char** argv) {
 	std::ifstream coordinate("../AUTO4508-Project/src/master_pkg/src/coordinate.csv");
-	std::vector<Coordinate> coordinates;
 	std::string line;
 	if (not coordinate.is_open()) {
 		return 1;
