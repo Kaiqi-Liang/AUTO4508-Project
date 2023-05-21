@@ -8,6 +8,7 @@ from std_msgs.msg import Bool
 bucket = False
 
 def image_callback(data):
+    global bucket
     if not bucket:
         return
     img = np.reshape(np.frombuffer(data.data, dtype=np.uint8), (300, 300, 3))
@@ -27,11 +28,10 @@ def image_callback(data):
     data.data = img.flatten().tobytes()
     pub = rospy.Publisher('labeled_image', Image, queue_size=10)
     pub.publish(data)
-    global bucket
     bucket = False
 
 def bucket_callback(data):
-    if data:
+    if data.data:
         global bucket
         bucket = True
 
