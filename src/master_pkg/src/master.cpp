@@ -171,7 +171,7 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		double distance =
 		   std::sqrt(std::pow(objects[LIDAR_FRONT], 2) + std::pow(iter->second, 2)
 		             - 2 * objects[LIDAR_FRONT] * iter->second
-		                  * std::cos((LIDAR_FRONT - min_index) * angle_increment));
+		                  * std::cos((LIDAR_FRONT - min_index) * lidar_scan_msg->angle_increment));
 		ROS_INFO("index=%ld, object distance=%lf, cone distance=%lf, "
 		         "distance=%lf",
 		         min_index,
@@ -232,7 +232,7 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
 }
 
 int main(int argc, char** argv) {
-	std::ifstream coordinate("../catkin_ws/src/master_pkg/src/coordinate.csv");
+	std::ifstream coordinate("../AUTO4508-Project/src/master_pkg/src/coordinate.csv");
 	std::string line;
 	if (not coordinate.is_open()) { return 1; }
 	while (std::getline(coordinate, line)) {
