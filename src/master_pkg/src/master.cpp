@@ -13,6 +13,12 @@
 #include <string>
 #include <vector>
 
+struct Cartesian {
+	double x;
+	double y;
+	double z;
+};
+
 struct Coordinate {
 	double latitude;
 	double longitude;
@@ -38,7 +44,7 @@ bool facing_obstacle = false;
 bool found_bucket = false;
 std::size_t waypoint_counter = 0;
 std::size_t obstacle_timer = 0;
-double current_heading = 0;
+double heading = 0;
 ros::Publisher joy_pub;
 ros::Publisher cmd_vel_pub;
 ros::Publisher cv_pub;
@@ -53,30 +59,50 @@ void joy_callback(const sensor_msgs::Joy::ConstPtr& joy_msg) {
 	if (manual) joy_pub.publish(joy_msg);
 }
 
+Cartesian ellip2cart(double phi, double lambda) {
+	phi *= M_PI / 180;
+	lambda *= M_PI / 180;
+	double a = 6378137; // semi-major axis (WGS84) [m]
+	double f = 1 / 298.257223563; // earth flattening (WGS84)
+	double e = std::sqrt((std::pow(a, 2) - std::pow(a * (1 - f), 2))
+	                     / std::pow(a, 2)); // eccentricity
+	double height = 5;
+	double normal_curature_radius =
+	   a / std::sqrt(1 - std::pow(e, 2) * std::pow(std::sin(phi), 2));
+	return {
+	   (normal_curature_radius + height) * std::cos(phi) * std::cos(lambda),
+	   (normal_curature_radius + height) * std::cos(phi) * std::sin(lambda),
+	   (normal_curature_radius * (1 - std::pow(e, 2)) + height) * std::sin(phi),
+	};
+}
+
 void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	if (manual or std::isnan(gps_fix_msg->latitude)
 	    or std::isnan(gps_fix_msg->longitude) or state != DRIVING) return;
 
-	Coordinate goal = coordinates[waypoint_counter];
-	Coordinate robot = {gps_fix_msg->latitude, gps_fix_msg->longitude};
+	Cartesian goal = ellip2cart(coordinates[waypoint_counter].latitude,
+	                            coordinates[waypoint_counter].longitude);
+	Cartesian robot = ellip2cart(gps_fix_msg->latitude, gps_fix_msg->longitude);
+	ROS_INFO("x=%lf, y=%lf, z=%lf", goal.x, goal.y, goal.z);
+	ROS_INFO("x=%lf, y=%lf, z=%lf", robot.x, robot.y, robot.z);
 
-	double distance = std::sqrt(std::pow(robot.latitude - goal.latitude, 2)
-	                            + std::pow(robot.longitude - goal.longitude, 2));
-	double bearing = std::atan2(goal.latitude - robot.latitude,
-	                            goal.longitude - robot.longitude);
+	double distance = std::sqrt(std::pow(robot.x - goal.x, 2)
+	                            + std::pow(robot.y - goal.y, 2));
+	double bearing = std::atan2(goal.x - robot.x,
+	                            goal.y - robot.y);
 
-	double angle = bearing - current_heading;
-	if (angle > M_PI) angle -= 2 * M_PI;
-	else if (angle < -M_PI) angle += 2 * M_PI;
+	double turning_angle = bearing - heading;
+	if (turning_angle > M_PI) turning_angle -= 2 * M_PI;
+	else if (turning_angle < -M_PI) turning_angle += 2 * M_PI;
 
 	double angular_speed = 0;
-	if (std::abs(angle) > 0.1) angular_speed = angle > 0 ? 0.3 : -0.3;
+	if (std::abs(turning_angle) > 0.1) angular_speed = turning_angle > 0 ? 0.3 : -0.3;
 
-	ROS_INFO("distance=%lf bearing=%lf angle=%lf heading=%lf facing_obstacle=%d",
+	ROS_INFO("distance=%lf bearing=%lf turning_angle=%lf heading=%lf facing_obstacle=%d",
 	         distance,
 	         bearing,
-	         angle,
-	         current_heading,
+	         turning_angle,
+	         heading,
 	         facing_obstacle);
 
 	geometry_msgs::Twist cmd_vel_msg;
@@ -207,7 +233,7 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
 	tf::Matrix3x3 m(q);
 	double roll, pitch, yaw;
 	m.getRPY(roll, pitch, yaw);
-	current_heading = yaw;
+	heading = yaw;
 }
 
 int main(int argc, char** argv) {
