@@ -1,9 +1,9 @@
+#include "geometry_msgs/Twist.h"
 #include "ros/ros.h"
+#include "sensor_msgs/Imu.h"
 #include "sensor_msgs/Joy.h"
 #include "sensor_msgs/LaserScan.h"
 #include "sensor_msgs/NavSatFix.h"
-#include "sensor_msgs/Imu.h"
-#include "geometry_msgs/Twist.h"
 #include <tf/tf.h>
 #include <fstream>
 #include <sstream>
@@ -49,29 +49,36 @@ Cartesian ellip2cart(double phi, double lambda) {
 	lambda *= M_PI / 180;
 	double a = 6378137; // semi-major axis (WGS84) [m]
 	double f = 1 / 298.257223563; // earth flattening (WGS84)
-	double e = std::sqrt((std::pow(a, 2) - std::pow(a * (1 - f), 2)) / std::pow(a, 2)); // excentricity
+	double e = std::sqrt((std::pow(a, 2) - std::pow(a * (1 - f), 2))
+	                     / std::pow(a, 2)); // eccentricity
 	double height = 5;
-	double normal_curature_radius = a / std::sqrt(1 - std::pow(e, 2) * std::pow(std::sin(phi), 2));
+	double normal_curature_radius =
+	   a / std::sqrt(1 - std::pow(e, 2) * std::pow(std::sin(phi), 2));
 	return {
-		(normal_curature_radius + height) * std::cos(phi) * std::cos(lambda),
-		(normal_curature_radius + height) * std::cos(phi) * std::sin(lambda),
-		(normal_curature_radius * (1 - std::pow(e, 2)) + height) * std::sin(phi),
+	   (normal_curature_radius + height) * std::cos(phi) * std::cos(lambda),
+	   (normal_curature_radius + height) * std::cos(phi) * std::sin(lambda),
+	   (normal_curature_radius * (1 - std::pow(e, 2)) + height) * std::sin(phi),
 	};
 }
 
 void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	if (manual or reached_waypoint) return;
 	double angular_speed = 0;
-	Cartesian goal = ellip2cart(coordinates[waypoint_counter].latitude, coordinates[waypoint_counter].longitude);
+	Cartesian goal = ellip2cart(coordinates[waypoint_counter].latitude,
+	                            coordinates[waypoint_counter].longitude);
 	Cartesian robot = ellip2cart(gps_fix_msg->latitude, gps_fix_msg->longitude);
-	double distance = std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2) + std::pow(robot.z - goal.z, 2));
+	double distance =
+	   std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2)
+	             + std::pow(robot.z - goal.z, 2));
 	double heading2goal = std::atan2(goal.y - robot.y, goal.x - robot.x);
 	double angle = heading2goal - current_heading + M_PI / 2;
-	if (std::abs(angle) > 0.3) {
-		angular_speed = angle > 0 ? 0.3 : -0.3;
-	}
+	if (std::abs(angle) > 0.3) { angular_speed = angle > 0 ? 0.3 : -0.3; }
+	ROS_INFO("distance = %lf angle = %lf facing_obstacle = %d",
+	         distance,
+	         angle,
+	         facing_obstacle);
+
 	geometry_msgs::Twist cmd_vel_msg;
-	ROS_INFO("distance = %lf angle = %lf facing_obstacle = %d", distance, angle, facing_obstacle);
 	if (distance > 1 and not facing_obstacle) {
 		cmd_vel_msg.linear.x = 0.5;
 		cmd_vel_msg.linear.y = 0;
@@ -97,7 +104,8 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 }
 
 void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
-	facing_obstacle = lidar_scan_msg->ranges[405] > 0 and lidar_scan_msg->ranges[405] < 2;
+	facing_obstacle = lidar_scan_msg->ranges[405] > 0
+	                  and lidar_scan_msg->ranges[405] < 2;
 	if (reached_waypoint) {
 		double min_distance = DBL_MAX;
 		double bucket_lidar_index;
@@ -119,7 +127,10 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 // }
 
 void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
-	tf::Quaternion q(imu_msg->orientation.x, imu_msg->orientation.y, imu_msg->orientation.z, imu_msg->orientation.w);
+	tf::Quaternion q(imu_msg->orientation.x,
+	                 imu_msg->orientation.y,
+	                 imu_msg->orientation.z,
+	                 imu_msg->orientation.w);
 	tf::Matrix3x3 m(q);
 	double roll, pitch, yaw;
 	m.getRPY(roll, pitch, yaw);
@@ -128,9 +139,15 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
 }
 
 int main(int argc, char** argv) {
-	std::ifstream coordinate("coordinate.csv");
+	ros::init(argc, argv, "master");
+	ros::NodeHandle n;
+
+	std::ifstream coordinate("../AUTO4508-Project/src/master_pkg/src/coordinate.csv");
 	std::vector<Coordinate> coordinates;
 	std::string line;
+	if (not coordinate.is_open()) {
+		return 1;
+	}
 	while (std::getline(coordinate, line)) {
 		std::stringstream ss{line};
 		std::string token;
@@ -140,17 +157,21 @@ int main(int argc, char** argv) {
 		ss >> longitude;
 		coordinates.emplace_back(latitude, longitude);
 	}
-	ROS_INFO("%lf %lf", coordinates[waypoint_counter].latitude, coordinates[waypoint_counter].longitude);
-	ros::init(argc, argv, "master");
-	ros::NodeHandle n;
+	coordinate.close();
+	ROS_INFO("%lf %lf",
+	         coordinates[waypoint_counter].latitude,
+	         coordinates[waypoint_counter].longitude);
+
 	ros::Subscriber joy_sub = n.subscribe("joy", 1000, joy_callback);
 	ros::Subscriber gps_sub = n.subscribe("fix", 1000, gps_callback);
 	ros::Subscriber imu_sub = n.subscribe("imu/data", 1000, imu_callback);
 	// ros::Subscriber cv_sub = n.subscribe("found_bucket", 1000, cv_callback);
 	ros::Subscriber lidar_sub =
 	   n.subscribe("sick_tim_7xx/scan", 1000, lidar_callback);
+
 	joy_pub = n.advertise<sensor_msgs::Joy>("master/joy", 1);
 	cmd_vel_pub = n.advertise<geometry_msgs::Twist>("RosAria/cmd_vel", 1);
+
 	ros::spin();
 	return 0;
 }
