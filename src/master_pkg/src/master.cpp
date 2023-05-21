@@ -139,9 +139,6 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
 }
 
 int main(int argc, char** argv) {
-	ros::init(argc, argv, "master");
-	ros::NodeHandle n;
-
 	std::ifstream coordinate("../AUTO4508-Project/src/master_pkg/src/coordinate.csv");
 	std::vector<Coordinate> coordinates;
 	std::string line;
@@ -158,9 +155,9 @@ int main(int argc, char** argv) {
 		coordinates.emplace_back(latitude, longitude);
 	}
 	coordinate.close();
-	ROS_INFO("%lf %lf",
-	         coordinates[waypoint_counter].latitude,
-	         coordinates[waypoint_counter].longitude);
+
+	ros::init(argc, argv, "master");
+	ros::NodeHandle n;
 
 	ros::Subscriber joy_sub = n.subscribe("joy", 1000, joy_callback);
 	ros::Subscriber gps_sub = n.subscribe("fix", 1000, gps_callback);
