@@ -11,3 +11,7 @@ target_link_libraries(master ${catkin_LIBRARIES})
 catkin_install_python(PROGRAMS scripts/cv.py
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
+
+catkin_install_python(PROGRAMS scripts/plot.py
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
