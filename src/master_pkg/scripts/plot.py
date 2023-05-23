@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 import math
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
-from io import BytesIO
 import cv2
 import rospy
 from cv_bridge import CvBridge
@@ -21,7 +20,7 @@ obstacle_longitudes = []
 bucket_latitudes = []
 bucket_longitudes = []
 
-def obstacle_callback(gps):
+def plot_callback(gps):
     if gps.z == 1:
         bucket_latitudes.append(gps.x)
         bucket_longitudes.append(gps.y)
@@ -49,9 +48,10 @@ def gps_callback(gps):
         ax.plot(obstacle_longitudes, obstacle_latitudes, 'ko', label='obstacle', transform=projection)
     if len(bucket_latitudes) > 0 and len(bucket_longitudes) > 0:
         ax.plot(bucket_longitudes, bucket_latitudes, 'ro', label='bucket', transform=projection)
-    ax.set_title('GPS Coordinates Plot')
 
+    ax.set_title('GPS Coordinates Plot')
     plt.legend()
+
     fig = plt.gcf()
     fig.canvas.draw()
     img = np.array(fig.canvas.renderer._renderer)
@@ -70,5 +70,5 @@ if __name__ == '__main__':
 
     rospy.init_node('plot', anonymous=True)
     rospy.Subscriber('fix', NavSatFix, gps_callback)
-    rospy.Subscriber('obstacle_gps', Point, obstacle_callback)
+    rospy.Subscriber('gps', Point, plot_callback)
     rospy.spin()
