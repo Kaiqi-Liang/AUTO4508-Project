@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
-import cv2
 import rospy
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Point
@@ -38,21 +37,20 @@ def gps_callback(gps):
     projection = ccrs.PlateCarree()
 
     # Create a figure and axes with the projection
-    _, ax = plt.subplots(subplot_kw={'projection': projection})
+    fig, axis = plt.subplots(subplot_kw={'projection': projection})
 
     # Plot the GPS coordinates
-    ax.plot(goal_longitudes, goal_latitudes, 'mo', label='waypoint', transform=projection)
+    axis.plot(goal_longitudes, goal_latitudes, 'mo', label='waypoint', transform=projection)
     if len(robot_latitudes) > 0 and len(robot_longitudes) > 0:
-        ax.plot(robot_longitudes, robot_latitudes, 'yo', label='path', transform=projection)
+        axis.plot(robot_longitudes, robot_latitudes, 'yo', label='path', transform=projection)
     if len(obstacle_latitudes) > 0 and len(obstacle_longitudes) > 0:
-        ax.plot(obstacle_longitudes, obstacle_latitudes, 'ko', label='obstacle', transform=projection)
+        axis.plot(obstacle_longitudes, obstacle_latitudes, 'ko', label='obstacle', transform=projection)
     if len(bucket_latitudes) > 0 and len(bucket_longitudes) > 0:
-        ax.plot(bucket_longitudes, bucket_latitudes, 'ro', label='bucket', transform=projection)
+        axis.plot(bucket_longitudes, bucket_latitudes, 'ro', label='bucket', transform=projection)
 
-    ax.set_title('GPS Coordinates Plot')
+    axis.set_title('GPS Coordinates Plot')
     plt.legend()
 
-    fig = plt.gcf()
     fig.canvas.draw()
     img = np.array(fig.canvas.renderer._renderer)
     plt.close(1)
