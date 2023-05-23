@@ -83,13 +83,13 @@ Cartesian ellip2cart(double phi, double lambda) {
 	   std::sqrt((std::pow(axis, 2) - std::pow(a * (1 - flattening), 2))
 	             / std::pow(axis, 2));
 	double height = 5;
-	double normal_curature_radius =
+	double radius_of_curvature =
 	   axis
 	   / std::sqrt(1 - std::pow(eccentricity, 2) * std::pow(std::sin(phi), 2));
 	return {
-	   (normal_curature_radius + height) * std::cos(phi) * std::cos(lambda),
-	   (normal_curature_radius + height) * std::cos(phi) * std::sin(lambda),
-	   (normal_curature_radius * (1 - std::pow(eccentricity, 2)) + height)
+	   (radius_of_curvature + height) * std::cos(phi) * std::cos(lambda),
+	   (radius_of_curvature + height) * std::cos(phi) * std::sin(lambda),
+	   (radius_of_curvature * (1 - std::pow(eccentricity, 2)) + height)
 	      * std::sin(phi),
 	};
 }
@@ -115,8 +115,10 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 
 	double turning_angle = bearing - heading + M_PI / 2;
 
-	if (turning_angle > M_PI) turning_angle -= 2 * M_PI;
-	else if (turning_angle < -M_PI) turning_angle += 2 * M_PI;
+	if (turning_angle > M_PI)
+		turning_angle -= 2 * M_PI;
+	else if (turning_angle < -M_PI)
+		turning_angle += 2 * M_PI;
 
 	double angular_speed = 0;
 	if (std::abs(turning_angle) > 0.1) {
@@ -238,10 +240,10 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		turn_right = bucket_index < LIDAR_FRONT;
 		if (turn_right) {
 			ROS_INFO("Bucket is on the right of the cone");
-			bearing = heading - turning_angle;
+			bearing = heading - M_PI / 2 - turning_angle;
 		} else {
 			ROS_INFO("Bucket is on the left of the cone");
-			bearing = heading + turning_angle;
+			bearing = heading - M_PI / 2 + turning_angle;
 		}
 		state = TURNING;
 		geometry_msgs::Point bucket_gps;
@@ -332,7 +334,8 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
 }
 
 int main(int argc, char** argv) {
-	std::ifstream coordinate("../AUTO4508-Project/src/master_pkg/src/coordinate.csv");
+	std::ifstream coordinate("../AUTO4508-Project/src/master_pkg/src/"
+	                         "coordinate.csv");
 	std::string line;
 	if (not coordinate.is_open()) return 1;
 	while (std::getline(coordinate, line)) {
