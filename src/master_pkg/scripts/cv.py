@@ -3,23 +3,22 @@ import numpy as np
 import cv2
 import rospy
 from sensor_msgs.msg import Image
-from std_msgs.msg import Bool
+from std_msgs.msg import Float64
 
-bucket = False
+distance: Float64 = None
 
 def get_contours_for_colour(img, lower: tuple[int, int, int], upper: tuple[int, int, int]):
     mask = cv2.inRange(img, np.array(lower), np.array(upper))
     contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     return contours[0] if len(contours) == 2 else contours[1]
 
-def bucket_callback(data):
-    if data.data:
-        global bucket
-        bucket = True
+def distance_callback(data):
+    global distance
+    distance = data.data
 
 def image_callback(data):
-    global bucket
-    if not bucket:
+    global distance
+    if distance is None:
         return
 
     img = np.reshape(np.frombuffer(data.data, dtype=np.uint8), (300, 300, 3))
@@ -44,10 +43,10 @@ def image_callback(data):
     data.data = img.flatten().tobytes()
     pub = rospy.Publisher('labeled_image', Image, queue_size=10)
     pub.publish(data)
-    bucket = False
+    distance = None
 
 if __name__ == '__main__':
     rospy.init_node('cv', anonymous=True)
     rospy.Subscriber('mobilenet_publisher/color/image', Image, image_callback)
-    rospy.Subscriber('bucket', Bool, bucket_callback)
+    rospy.Subscriber('distance', Float64, distance_callback)
     rospy.spin()

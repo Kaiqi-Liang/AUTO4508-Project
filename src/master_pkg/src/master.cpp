@@ -5,7 +5,7 @@
 #include "sensor_msgs/Joy.h"
 #include "sensor_msgs/LaserScan.h"
 #include "sensor_msgs/NavSatFix.h"
-#include "std_msgs/Bool.h"
+#include "std_msgs/Float64.h"
 #include <tf/tf.h>
 #include <unordered_map>
 #include <cmath>
@@ -31,11 +31,11 @@ struct Coordinate {
 Coordinate robot_gps;
 
 enum State {
-	DRIVING, // Driving towards the next waypoint
-	ROTATING, // Rotating away for the obstacle after waiting for them to move
-	FOLLOWING, // Following the obstacle keeping it on the right
-	DETECTING, // Looking for the bucket after reaching a waypoint
-	TURNING, // Turning towards the bucket after detecting it
+	DRIVING, // Driving towards the next waypoint (waypoint driving)
+	ROTATING, // Rotating away for the obstacle after waiting for them to move (object avoidance)
+	FOLLOWING, // Following the obstacle keeping it on the right (object avoidance)
+	DETECTING, // Looking for the bucket after reaching a waypoint (bucket detection)
+	TURNING, // Turning towards the bucket after detecting it (bucket detection)
 };
 
 constexpr std::size_t LIDAR_FRONT = 405;
@@ -48,6 +48,7 @@ constexpr double ANGULAR_SPEED = 0.2;
 constexpr double LINEAR_SPEED = 0.5;
 constexpr double LIDAR_VALID_DISTANCE = 0.5;
 
+bool deadman = true;
 bool manual = true;
 bool facing_obstacle = false;
 bool found_bucket = false;
@@ -70,6 +71,9 @@ void joy_callback(const sensor_msgs::Joy::ConstPtr& joy_msg) {
 		manual = true;
 	} else if (joy_msg->buttons[2]) { // automated mode
 		manual = false;
+	}
+	if (joy_msg->buttons[0]) {
+		deadman = false;
 	}
 	if (manual) joy_pub.publish(joy_msg);
 }
@@ -96,7 +100,7 @@ Cartesian ellip2cart(double phi, double lambda) {
 
 void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	// ROS_INFO("state=%d manual=%d", state, manual);
-	if (manual or std::isnan(gps_fix_msg->latitude)
+	if (deadman or manual or std::isnan(gps_fix_msg->latitude)
 	    or std::isnan(gps_fix_msg->longitude) or state != DRIVING) {
 		return;
 	}
@@ -177,7 +181,7 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
  * @param lidar_scan_msg ranges [m]: 0 -> 811, right -> left
  */
 void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
-	if (manual) return;
+	if (deadman or manual) return;
 	facing_obstacle = false;
 	for (std::size_t i = LIDAR_FRONT_RIGHT; i <= LIDAR_FRONT_LEFT; ++i) {
 		if (lidar_scan_msg->ranges[i] > 0.2
@@ -187,6 +191,7 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 	}
 	geometry_msgs::Twist cmd_vel_msg;
 	double bearing;
+	double bucket_cone_distance;
 	switch (state) {
 	case DETECTING: {
 		std::unordered_map<std::size_t, double> objects{};
@@ -230,7 +235,7 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		                    });
 		std::size_t bucket_index = bucket_iter->first;
 		double bucket_distance = bucket_iter->second;
-		double distance =
+		bucket_cone_distance =
 		   std::sqrt(std::pow(cone_distance, 2) + std::pow(bucket_distance, 2)
 		             - 2 * cone_distance * bucket_distance
 		                  * std::cos(std::abs(int(cone_index) - int(bucket_index))
@@ -272,9 +277,9 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		if (std::abs(bearing - heading) < 0.3) {
 			// finish with this waypoint
 			ROS_INFO("Turned to the bucket");
-			std_msgs::Bool bucket;
-			bucket.data = true;
-			cv_pub.publish(bucket);
+			std_msgs::Float64 distance;
+			distance.data = bucket_cone_distance;
+			cv_pub.publish(distance);
 			state = DRIVING;
 			break;
 		} else if (turn_right) {
@@ -361,7 +366,7 @@ int main(int argc, char** argv) {
 
 	joy_pub = n.advertise<sensor_msgs::Joy>("master/joy", 1);
 	cmd_vel_pub = n.advertise<geometry_msgs::Twist>("RosAria/cmd_vel", 1);
-	cv_pub = n.advertise<std_msgs::Bool>("bucket", 1);
+	cv_pub = n.advertise<std_msgs::Float64>("distance", 1);
 	gps_pub = n.advertise<geometry_msgs::Point>("gps", 1);
 
 	ros::spin();
