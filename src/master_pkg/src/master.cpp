@@ -36,6 +36,7 @@ enum State {
 	FOLLOWING, // Following the obstacle keeping it on the right (object avoidance)
 	DETECTING, // Looking for the bucket after reaching a waypoint (bucket detection)
 	TURNING, // Turning towards the bucket after detecting it (bucket detection)
+	FINISHED, // Back to the first waypoint
 };
 
 constexpr std::size_t LIDAR_FRONT = 405;
@@ -59,6 +60,7 @@ std::size_t obstacle_timer = 0;
 
 State state = DRIVING;
 double heading = 0;
+double bucket_cone_distance;
 std::vector<Coordinate> coordinates;
 
 ros::Publisher joy_pub;
@@ -72,9 +74,7 @@ void joy_callback(const sensor_msgs::Joy::ConstPtr& joy_msg) {
 	} else if (joy_msg->buttons[2]) { // automated mode
 		manual = false;
 	}
-	if (joy_msg->buttons[0]) {
-		deadman = false;
-	}
+	deadman = not joy_msg->buttons[0];
 	if (manual) joy_pub.publish(joy_msg);
 }
 
@@ -84,7 +84,7 @@ Cartesian ellip2cart(double phi, double lambda) {
 	double axis = 6378137; // semi-major axis (WGS84) [m]
 	double flattening = 1 / 298.257223563; // earth flattening (WGS84)
 	double eccentricity =
-	   std::sqrt((std::pow(axis, 2) - std::pow(a * (1 - flattening), 2))
+	   std::sqrt((std::pow(axis, 2) - std::pow(axis * (1 - flattening), 2))
 	             / std::pow(axis, 2));
 	double height = 5;
 	double radius_of_curvature =
@@ -169,11 +169,10 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	} else {
 		state = DETECTING;
 		++waypoint_counter;
-		// TODO
 		if (waypoint_counter == coordinates.size()) {
-			// state = FINISHING;
+			ROS_INFO("Home sweet home\n");
+			state = FINISHED;
 		}
-		waypoint_counter %= coordinates.size();
 	}
 }
 
@@ -191,7 +190,6 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 	}
 	geometry_msgs::Twist cmd_vel_msg;
 	double bearing;
-	double bucket_cone_distance;
 	switch (state) {
 	case DETECTING: {
 		std::unordered_map<std::size_t, double> objects{};
@@ -269,7 +267,7 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		         cone_index,
 		         bucket_distance,
 		         cone_distance,
-		         distance);
+		         bucket_cone_distance);
 		break;
 	}
 	case TURNING: {
@@ -354,6 +352,7 @@ int main(int argc, char** argv) {
 		coordinates.emplace_back(latitude, longitude);
 	}
 	coordinate.close();
+	coordinates.push_back(coordinates[0]);
 
 	ros::init(argc, argv, "master");
 	ros::NodeHandle n;
