@@ -189,7 +189,7 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		}
 	}
 	geometry_msgs::Twist cmd_vel_msg;
-	double bearing;
+	double bearing; // TODO move it to a global variable
 	switch (state) {
 	case DETECTING: {
 		std::unordered_map<std::size_t, double> objects{};
@@ -257,20 +257,19 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		bucket_gps.y = robot_gps.longitude + dist * std::cos(bearing);
 		bucket_gps.z = 1;
 		gps_pub.publish(bucket_gps);
-		ROS_INFO("turning_angle=%lf, heading=%lf, bearing=%lf, bucket_index=%ld, "
-		         "cone_index=%ld, bucket_distance=%lf, cone_distance=%lf, "
-		         "distance=%lf",
+		ROS_INFO("turning_angle=%lf, bucket_index=%ld, cone_index=%ld, bucket_distance=%lf, cone_distance=%lf");
 		         turning_angle,
-		         heading,
-		         bearing,
 		         bucket_index,
 		         cone_index,
 		         bucket_distance,
-		         cone_distance,
-		         bucket_cone_distance);
+		         cone_distance);
 		break;
 	}
 	case TURNING: {
+		ROS_INFO("heading=%lf, bearing=%lf, distance=%lf",
+		         heading,
+		         bearing,
+		         bucket_cone_distance);
 		// turn to the way point
 		if (std::abs(bearing - heading) < 0.3) {
 			// finish with this waypoint
