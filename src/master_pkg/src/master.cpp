@@ -43,7 +43,7 @@ constexpr std::size_t LIDAR_FRONT = 405;
 constexpr std::size_t LIDAR_FRONT_RIGHT = 315;
 constexpr std::size_t LIDAR_FRONT_LEFT = 495;
 
-constexpr double SAFE_DISTANCE_WAYPOINT = 3;
+constexpr double SAFE_DISTANCE_WAYPOINT = 4;
 constexpr double SAFE_DISTANCE_OBSTACLE = 2;
 constexpr double ANGULAR_SPEED = 0.2;
 constexpr double LINEAR_SPEED = 0.5;
@@ -55,11 +55,12 @@ bool facing_obstacle = false;
 bool found_bucket = false;
 bool turn_right;
 
-std::size_t waypoint_counter = 0;
+std::size_t waypoint_counter = 1;
 std::size_t obstacle_timer = 0;
 
 State state = DRIVING;
 double heading = 0;
+double bearing;
 double bucket_cone_distance;
 std::vector<Coordinate> coordinates;
 
@@ -99,7 +100,7 @@ Cartesian ellip2cart(double phi, double lambda) {
 }
 
 void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
-	// ROS_INFO("state=%d manual=%d", state, manual);
+	ROS_INFO("state=%d manual=%d heading=%lf", state, manual, heading);
 	if (deadman or manual or std::isnan(gps_fix_msg->latitude)
 	    or std::isnan(gps_fix_msg->longitude) or state != DRIVING) {
 		return;
@@ -189,7 +190,6 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		}
 	}
 	geometry_msgs::Twist cmd_vel_msg;
-	double bearing; // TODO move it to a global variable
 	switch (state) {
 	case DETECTING: {
 		std::unordered_map<std::size_t, double> objects{};
@@ -257,7 +257,8 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		bucket_gps.y = robot_gps.longitude + dist * std::cos(bearing);
 		bucket_gps.z = 1;
 		gps_pub.publish(bucket_gps);
-		ROS_INFO("turning_angle=%lf, bucket_index=%ld, cone_index=%ld, bucket_distance=%lf, cone_distance=%lf");
+		ROS_INFO("bearing = %lf, turning_angle=%lf, bucket_index=%ld, cone_index=%ld, bucket_distance=%lf, cone_distance=%lf",
+		         bearing,
 		         turning_angle,
 		         bucket_index,
 		         cone_index,
