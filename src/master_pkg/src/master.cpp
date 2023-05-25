@@ -45,7 +45,6 @@ constexpr std::size_t LIDAR_FRONT_LEFT = 495;
 
 constexpr double SAFE_DISTANCE_WAYPOINT = 4;
 constexpr double SAFE_DISTANCE_OBSTACLE = 2;
-constexpr double ANGULAR_SPEED = 0.2;
 constexpr double LINEAR_SPEED = 0.5;
 constexpr double LIDAR_VALID_DISTANCE = 0.5;
 
@@ -110,8 +109,6 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& gps_fix_msg) {
 	Cartesian goal = ellip2cart(coordinates[waypoint_counter].latitude,
 	                            coordinates[waypoint_counter].longitude);
 	Cartesian robot = ellip2cart(gps_fix_msg->latitude, gps_fix_msg->longitude);
-	// ROS_INFO("x=%lf, y=%lf, z=%lf", goal.x, goal.y, goal.z);
-	// ROS_INFO("x=%lf, y=%lf, z=%lf", robot.x, robot.y, robot.z);
 
 	double distance =
 	   std::sqrt(std::pow(robot.x - goal.x, 2) + std::pow(robot.y - goal.y, 2)
@@ -271,25 +268,20 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		         heading,
 		         bearing,
 		         bucket_cone_distance);
-		// turn to the way point
 		if (std::abs(bearing - heading) < 0.3) {
-			// finish with this waypoint
 			ROS_INFO("Turned to the bucket");
 			std_msgs::Float64 distance;
 			distance.data = bucket_cone_distance;
 			cv_pub.publish(distance);
 			state = DRIVING;
 			break;
-		} else if (turn_right) {
-			cmd_vel_msg.angular.z = -ANGULAR_SPEED;
-		} else {
-			cmd_vel_msg.angular.z = ANGULAR_SPEED;
 		}
+		cmd_vel_msg.angular.z = turn_right ? -0.5 : 0.5;
 		cmd_vel_pub.publish(cmd_vel_msg);
 		break;
 	}
 	case ROTATING: {
-		cmd_vel_msg.angular.z = ANGULAR_SPEED; // turn left
+		cmd_vel_msg.angular.z = 1; // turn left
 		cmd_vel_pub.publish(cmd_vel_msg);
 		bool front_open = true;
 		for (std::size_t i = LIDAR_FRONT_RIGHT; i < LIDAR_FRONT; i += 5) {
@@ -309,12 +301,10 @@ void lidar_callback(const sensor_msgs::LaserScan::ConstPtr& lidar_scan_msg) {
 		cmd_vel_pub.publish(cmd_vel_msg);
 		bool right_open = true;
 		for (std::size_t i = 0; i < 200; i += 5) {
-			ROS_INFO("range[i]=%lf", lidar_scan_msg->ranges[i]);
 			if (lidar_scan_msg->ranges[i] < 2 and lidar_scan_msg->ranges[i] > 0.2) {
 				right_open = false;
 			}
 		}
-		ROS_INFO("right_open=%d", right_open);
 		if (right_open) {
 			ROS_INFO("Away from the obstacle\n");
 			state = DRIVING;
