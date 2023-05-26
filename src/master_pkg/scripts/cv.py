@@ -25,7 +25,7 @@ def image_callback(data):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     contours = [
         *get_contours_for_colour(hsv, (160, 100, 50), (180, 255, 255)), # red
-        *get_contours_for_colour(hsv, (20, 120, 70), (30, 255, 255)), # yellow
+        *get_contours_for_colour(hsv, (10, 120, 70), (40, 255, 255)), # yellow
     ]
 
     objects = []
@@ -33,9 +33,6 @@ def image_callback(data):
         x, y, w, h = cv2.boundingRect(contour)
         if 20 < w < 250 and 20 < h < 250:
             objects.append(contour)
-            rospy.logerr(cv2.contourArea(contour))
-            rospy.logerr(w * h)
-            rospy.logerr(cv2.contourArea(contour) / (w * h) > 0.7)
             if cv2.contourArea(contour) / (w * h) > 0.7:
                 # If the area of the contour is at least 70% of its bounding box
                 cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 1)
@@ -56,7 +53,7 @@ def image_callback(data):
 
     # Add the text to the image
     cv2.putText(img, text, (text_x, text_y), font, font_scale, font_color, thickness)
-    cv2.imwrite(f"../AUTO4508-Project/{distance}.jpg", img)
+    cv2.imwrite(f"../catkin_ws/{distance}.jpg", img)
 
     data.data = img.flatten().tobytes()
     pub = rospy.Publisher('labeled_image', Image, queue_size=10)

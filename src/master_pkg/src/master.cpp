@@ -329,7 +329,7 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& imu_msg) {
 }
 
 int main(int argc, char** argv) {
-	std::ifstream coordinate("../AUTO4508-Project/coordinate.csv");
+	std::ifstream coordinate("../catkin_ws/coordinate.csv");
 	std::string line;
 	if (not coordinate.is_open()) return 1;
 	while (std::getline(coordinate, line)) {

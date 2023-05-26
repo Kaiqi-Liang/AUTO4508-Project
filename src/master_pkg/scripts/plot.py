@@ -62,7 +62,7 @@ def gps_callback(gps):
     pub.publish(image_msg)
 
 if __name__ == '__main__':
-    df = pd.read_csv('../AUTO4508-Project/coordinate.csv', header=None)
+    df = pd.read_csv('../catkin_ws/coordinate.csv', header=None)
     goal_latitudes = df.iloc[:,0].tolist()
     goal_longitudes = df.iloc[:,1].tolist()
 
